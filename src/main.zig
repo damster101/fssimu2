@@ -114,8 +114,8 @@ fn usage() void {
         \\  fssimu2 [--json] reference.png distorted.png
         \\
         \\options:
-        \\  --json     Output result as JSON object.
-        \\  -h, --help Show this help.
+        \\  --json          output result as json
+        \\  -h, --help      show this help
     , .{});
     print("\n\n\x1b[37m8-bit RGB[A] sRGB PNG expected\x1b[0m\n", .{});
 }

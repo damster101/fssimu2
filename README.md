@@ -11,8 +11,8 @@ usage:
   fssimu2 [--json] reference.png distorted.png
 
 options:
-  --json     Output result as JSON object.
-  -h, --help Show this help.
+  --json          output result as json
+  -h, --help      show this help
 
 8-bit RGB[A] sRGB PNG expected
 ```
@@ -77,6 +77,12 @@ LEVELS: 1.0 2.0 4.0
  SRCC (Spearman): 0.995220
  KRCC (Kendall): 0.948829
 ```
+
+## Compilation
+
+Compilation requires Zig version 0.14.1
+
+Run `zig build --release=fast`, and the binary will emit to `zig-out/bin/ssimu2`
 
 ## License
 
