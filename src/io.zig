@@ -21,7 +21,7 @@ pub fn loadPNG(allocator: std.mem.Allocator, path: []const u8) !Image {
     defer file.close();
     const size = try file.getEndPos();
     const buf = try allocator.alloc(u8, size);
-    errdefer allocator.free(buf);
+    defer allocator.free(buf);
     _ = try file.readAll(buf);
 
     const ctx = c.spng_ctx_new(0);
@@ -70,7 +70,7 @@ pub fn loadPAM(allocator: std.mem.Allocator, path: []const u8) !Image {
 
     const file_size = try file.getEndPos();
     const buf = try allocator.alloc(u8, file_size);
-    errdefer allocator.free(buf);
+    defer allocator.free(buf);
     _ = try file.readAll(buf);
 
     if (buf.len < 3 or !std.mem.startsWith(u8, buf, "P7")) return error.NotAPamFile;
