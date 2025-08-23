@@ -38,15 +38,15 @@ pub fn main() !void {
     }
 
     if (pos_index != 2)
-        return usageExtra("Two PNG paths required: reference distorted");
+        return usageExtra("Two image paths required: reference distorted");
 
     const ref_path = positional[0].?;
     const dist_path = positional[1].?;
 
-    var ref_image = try io.loadPNG(allocator, ref_path);
+    var ref_image = try io.loadImage(allocator, ref_path);
     defer ref_image.deinit(allocator);
 
-    var dist_image = try io.loadPNG(allocator, dist_path);
+    var dist_image = try io.loadImage(allocator, dist_path);
     defer dist_image.deinit(allocator);
 
     // Enforce matching original dimensions
@@ -54,10 +54,13 @@ pub fn main() !void {
         return fail("Input images must have identical dimensions (got {d}x{d} vs {d}x{d})", .{ ref_image.width, ref_image.height, dist_image.width, dist_image.height }, 2);
 
     // Convert both to 3-channel RGB ignoring alpha (if present)
-    const ref_rgb = try io.toRGB8(allocator, ref_image);
-    defer allocator.free(ref_rgb);
-    const dist_rgb = try io.toRGB8(allocator, dist_image);
-    defer allocator.free(dist_rgb);
+    const ref_rgb_allocated: bool = ref_image.channels != 3;
+    const ref_rgb = if (ref_rgb_allocated) try io.toRGB8(allocator, ref_image) else ref_image.data;
+    defer if (ref_rgb_allocated) allocator.free(ref_rgb);
+
+    const dist_rgb_allocated: bool = dist_image.channels != 3;
+    const dist_rgb = if (dist_rgb_allocated) try io.toRGB8(allocator, dist_image) else dist_image.data;
+    defer if (dist_rgb_allocated) allocator.free(dist_rgb);
 
     var width = ref_image.width;
     const height = ref_image.height;
@@ -108,13 +111,13 @@ fn usage() void {
     print("\x1b[34mfssimu2\x1b[0m | {s}\n\n", .{VERSION});
     print(
         \\usage:
-        \\  fssimu2 [--json] reference.png distorted.png
+        \\  fssimu2 [--json] reference.(png|pam) distorted.(png|pam)
         \\
         \\options:
         \\  --json          output result as json
         \\  -h, --help      show this help
     , .{});
-    print("\n\n\x1b[37m8-bit RGB[A] sRGB PNG expected\x1b[0m\n", .{});
+    print("\n\n\x1b[37m8-bit sRGB PNG or PAM expected (RGB[A] or GRAYSCALE[+ALPHA])\x1b[0m\n", .{});
 }
 
 fn usageExtra(msg: []const u8) void {
