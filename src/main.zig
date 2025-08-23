@@ -13,9 +13,9 @@ pub fn main() !void {
     var args_iter = try std.process.argsWithAllocator(allocator);
     defer args_iter.deinit();
 
-    var args = std.ArrayList([]const u8).init(allocator);
-    defer args.deinit();
-    while (args_iter.next()) |a| try args.append(a);
+    var args: std.ArrayList([]const u8) = .empty;
+    defer args.deinit(allocator);
+    while (args_iter.next()) |a| try args.append(allocator, a);
 
     if (args.items.len < 3)
         return usage();
@@ -99,7 +99,7 @@ pub fn main() !void {
     };
 
     if (json_output) {
-        try std.io.getStdOut().writer().print(
+        print(
             "{{\"metric\":\"SSIMULACRA2\",\"score\":{d:.8}}}\n",
             .{score},
         );
@@ -121,8 +121,7 @@ fn usage() void {
 }
 
 fn usageExtra(msg: []const u8) void {
-    const w = std.io.getStdErr().writer();
-    w.print("Error: {s}\n\n", .{msg}) catch {};
+    print("Error: {s}\n\n", .{msg});
     usage();
 }
 

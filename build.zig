@@ -24,10 +24,12 @@ pub fn build(b: *std.Build) void {
     options.addOption([]const u8, "version", version);
 
     // libspng
-    const spng = b.addStaticLibrary(.{
+    const spng = b.addLibrary(.{
         .name = "spng",
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     const spng_sources = [_][]const u8{
         "third-party/libspng/spng.c",
@@ -41,9 +43,11 @@ pub fn build(b: *std.Build) void {
     // ssimu2
     const bin = b.addExecutable(.{
         .name = "ssimu2",
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     bin.root_module.addOptions("build_opts", options);
     bin.addIncludePath(b.path("."));

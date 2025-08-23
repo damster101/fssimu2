@@ -35,7 +35,7 @@ pub fn computeSSIMULACRA2(
 
     const plane_size: usize = pixels;
     const total_floats: usize = plane_size * 3 * 2;
-    var planes = try allocator.alignedAlloc(f32, 32, total_floats);
+    var planes: []f32 = try allocator.alignedAlloc(f32, .of(f32), total_floats);
     defer allocator.free(planes);
 
     var ref_planes: [3][]f32 = undefined;
@@ -543,7 +543,7 @@ pub fn process(
     h: u32,
 ) f64 {
     const wh: u32 = stride * h;
-    const temp_alloc = allocator.alignedAlloc(f32, 32, wh * 18) catch unreachable;
+    const temp_alloc = allocator.alignedAlloc(f32, .of(f32), wh * 18) catch unreachable;
     defer allocator.free(temp_alloc);
     var temp = temp_alloc[0..];
 
@@ -573,7 +573,7 @@ pub fn process(
     }
 
     // Single scratch buffer for all blurs (width never exceeds original stride)
-    const scratch = allocator.alignedAlloc(f32, 32, stride) catch unreachable;
+    const scratch = allocator.alignedAlloc(f32, .of(f32), stride) catch unreachable;
     defer allocator.free(scratch);
 
     var plane_avg_ssim: [6][6]f64 = undefined;
