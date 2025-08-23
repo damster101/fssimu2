@@ -1,40 +1,8 @@
-/// SSIMULACRA2 standalone implementation (ported from Vapoursynth filter version).
-///
-/// Original metric core was designed to operate on planar, linear RGB float
-/// images whose row stride and width are multiples of 16 (to simplify
-/// SIMD-by-hand using Zig vectors of width 16).
-///
-/// This standalone module exposes:
-///   pub fn computeSSIMULACRA2(
-///       allocator: std.mem.Allocator,
-///       reference: []const u8,
-///       distorted: []const u8,
-///       width: u32,
-///       height: u32,
-///       channels: u32,
-///   ) !f64
-///
-/// Inputs:
-///   - reference / distorted: interleaved 8-bit sRGB buffers (RGB or RGBA)
-///   - width, height: image dimensions (must match for both images)
-///   - channels: 3 (RGB) or 4 (RGBA). Alpha (if present) is ignored.
-/// Constraints:
-///   - width must be a multiple of 16 (the original implementation assumes this).
-///
-/// Returns:
-///   - SSIMULACRA2 score as f64 (higher is better, ~0-100 range)
-///
-/// Errors:
-///   - error.WidthNotMultipleOf16
-///   - error.InvalidChannelCount
-///
-/// NOTE:
-/// If you need to support arbitrary widths, you can add horizontal padding
-/// of the last pixel up to the next multiple of 16 and adjust the loops
-/// to limit statistical accumulation to original width. For parity with the
-/// existing code, we keep the width constraint explicit here.
 const std = @import("std");
 const math = std.math;
+const scl = @import("linearlight.zig");
+
+// SSIMULACRA2 Metric Implementation
 
 pub const Ssimu2Error = error{
     WidthNotMultipleOf16,
@@ -42,7 +10,10 @@ pub const Ssimu2Error = error{
     OutOfMemory,
 };
 
-/// Public convenience entry point.
+const K_SIZE = 9;
+const RADIUS = 4;
+const vec_t: type = @Vector(16, f32);
+
 pub fn computeSSIMULACRA2(
     allocator: std.mem.Allocator,
     reference: []const u8,
@@ -60,12 +31,10 @@ pub fn computeSSIMULACRA2(
     std.debug.assert(reference.len >= expected_len);
     std.debug.assert(distorted.len >= expected_len);
 
-    // Allocate planar float (linear RGB) buffers for both images.
-    // Stride equals width (no padding) because width is guaranteed multiple of 16.
     const stride: u32 = width;
 
     const plane_size: usize = pixels;
-    const total_floats: usize = plane_size * 3 * 2; // 3 planes * 2 images
+    const total_floats: usize = plane_size * 3 * 2;
     var planes = try allocator.alignedAlloc(f32, 32, total_floats);
     defer allocator.free(planes);
 
@@ -83,11 +52,9 @@ pub fn computeSSIMULACRA2(
         }
     }
 
-    // Fill using sRGB->linear conversion.
-    sRGBInterleavedToPlanarLinear(reference, ref_planes, width, height, channels);
-    sRGBInterleavedToPlanarLinear(distorted, dist_planes, width, height, channels);
+    scl.sRGBInterleavedToPlanarLinear(reference, ref_planes, width, height, channels);
+    scl.sRGBInterleavedToPlanarLinear(distorted, dist_planes, width, height, channels);
 
-    // Wrap as [][]const f32 for process signature.
     const ref_const: [3][]const f32 = .{
         ref_planes[0], ref_planes[1], ref_planes[2],
     };
@@ -97,12 +64,6 @@ pub fn computeSSIMULACRA2(
 
     return process(allocator, ref_const, dist_const, stride, width, height);
 }
-
-// -------------------- Internal metric implementation (ported) --------------------
-
-const ksize = 9;
-const radius = 4;
-const vec_t: type = @Vector(16, f32);
 
 inline fn multiplyVec(src1: anytype, src2: anytype, dst: []f32) void {
     dst[0..16].* = @as(vec_t, src1[0..16].*) * @as(vec_t, src2[0..16].*);
@@ -120,58 +81,58 @@ pub inline fn multiply(src1: []const f32, src2: []const f32, dst: []f32, stride:
     }
 }
 
-fn blurH(srcp: []f32, dstp: []f32, kernel: [ksize]f32, w: i32) void {
+fn blurH(srcp: []f32, dstp: []f32, kernel: [K_SIZE]f32, w: i32) void {
     var j: i32 = 0;
-    while (j < @min(w, radius)) : (j += 1) {
+    while (j < @min(w, RADIUS)) : (j += 1) {
         const dist_from_right: i32 = w - 1 - j;
         var sum: f32 = 0.0;
         var k: i32 = 0;
-        while (k < radius) : (k += 1) {
-            const idx: i32 = if (j < radius - k) @min(radius - k - j, w - 1) else (j - radius + k);
+        while (k < RADIUS) : (k += 1) {
+            const idx: i32 = if (j < RADIUS - k) @min(RADIUS - k - j, w - 1) else (j - RADIUS + k);
             sum += kernel[@intCast(k)] * srcp[@intCast(idx)];
         }
-        k = radius;
-        while (k < ksize) : (k += 1) {
-            const idx: i32 = if (dist_from_right < k - radius) (j - @min(k - radius - dist_from_right, j)) else (j - radius + k);
+        k = RADIUS;
+        while (k < K_SIZE) : (k += 1) {
+            const idx: i32 = if (dist_from_right < k - RADIUS) (j - @min(k - RADIUS - dist_from_right, j)) else (j - RADIUS + k);
             sum += kernel[@intCast(k)] * srcp[@intCast(idx)];
         }
         dstp[@intCast(j)] = sum;
     }
 
-    j = radius;
-    while (j < w - @min(w, radius)) : (j += 1) {
+    j = RADIUS;
+    while (j < w - @min(w, RADIUS)) : (j += 1) {
         var sum: f32 = 0.0;
         var k: i32 = 0;
-        while (k < ksize) : (k += 1) {
-            sum += kernel[@intCast(k)] * srcp[@intCast(j - radius + k)];
+        while (k < K_SIZE) : (k += 1) {
+            sum += kernel[@intCast(k)] * srcp[@intCast(j - RADIUS + k)];
         }
         dstp[@intCast(j)] = sum;
     }
 
-    j = @max(radius, w - @min(w, radius));
+    j = @max(RADIUS, w - @min(w, RADIUS));
     while (j < w) : (j += 1) {
         const dist_from_right: i32 = w - 1 - j;
         var sum: f32 = 0.0;
         var k: i32 = 0;
-        while (k < radius) : (k += 1) {
-            const idx: i32 = if (j < radius - k) @min(radius - k - j, w - 1) else (j - radius + k);
+        while (k < RADIUS) : (k += 1) {
+            const idx: i32 = if (j < RADIUS - k) @min(RADIUS - k - j, w - 1) else (j - RADIUS + k);
             sum += kernel[@intCast(k)] * srcp[@intCast(idx)];
         }
-        k = radius;
-        while (k < ksize) : (k += 1) {
-            const idx: i32 = if (dist_from_right < k - radius) (j - @min(k - radius - dist_from_right, j)) else (j - radius + k);
+        k = RADIUS;
+        while (k < K_SIZE) : (k += 1) {
+            const idx: i32 = if (dist_from_right < k - RADIUS) (j - @min(k - RADIUS - dist_from_right, j)) else (j - RADIUS + k);
             sum += kernel[@intCast(k)] * srcp[@intCast(idx)];
         }
         dstp[@intCast(j)] = sum;
     }
 }
 
-inline fn blurV(src: anytype, dstp: []f32, kernel: [ksize]f32, w: u32) void {
+inline fn blurV(src: anytype, dstp: []f32, kernel: [K_SIZE]f32, w: u32) void {
     var j: u32 = 0;
     while (j < w) : (j += 1) {
         var accum: f32 = 0.0;
         var k: u32 = 0;
-        while (k < ksize) : (k += 1) {
+        while (k < K_SIZE) : (k += 1) {
             accum += kernel[k] * src[k][j];
         }
         dstp[j] = accum;
@@ -179,7 +140,7 @@ inline fn blurV(src: anytype, dstp: []f32, kernel: [ksize]f32, w: u32) void {
 }
 
 pub inline fn blur(src: []const f32, dst: []f32, stride: u32, w: u32, h: u32, tmp_row: []f32) void {
-    const kernel = [ksize]f32{
+    const kernel = [K_SIZE]f32{
         0.0076144188642501831054687500,
         0.0360749699175357818603515625,
         0.1095860823988914489746093750,
@@ -194,22 +155,22 @@ pub inline fn blur(src: []const f32, dst: []f32, stride: u32, w: u32, h: u32, tm
     const ih: i32 = @bitCast(h);
     while (i < ih) : (i += 1) {
         const ui: u32 = @bitCast(i);
-        var srcp_rows: [ksize][]const f32 = undefined;
+        var srcp_rows: [K_SIZE][]const f32 = undefined;
         const dstp_row: []f32 = dst[(ui * stride)..];
         const dist_from_bottom: i32 = ih - 1 - i;
 
         var k: i32 = 0;
-        while (k < radius) : (k += 1) {
-            const row: i32 = if (i < radius - k) (@min(radius - k - i, ih - 1)) else (i - radius + k);
+        while (k < RADIUS) : (k += 1) {
+            const row: i32 = if (i < RADIUS - k) (@min(RADIUS - k - i, ih - 1)) else (i - RADIUS + k);
             const urow: u32 = @bitCast(row);
             srcp_rows[@intCast(k)] = src[(urow * stride)..];
         }
-        k = radius;
-        while (k < ksize) : (k += 1) {
-            const row: i32 = if (dist_from_bottom < k - radius)
-                (i - @min(k - radius - dist_from_bottom, i))
+        k = RADIUS;
+        while (k < K_SIZE) : (k += 1) {
+            const row: i32 = if (dist_from_bottom < k - RADIUS)
+                (i - @min(k - RADIUS - dist_from_bottom, i))
             else
-                (i - radius + k);
+                (i - RADIUS + k);
             const urow: u32 = @bitCast(row);
             srcp_rows[@intCast(k)] = src[(urow * stride)..];
         }
@@ -225,7 +186,6 @@ const K_D1: f32 = std.math.lossyCast(f32, math.cbrt(@as(f32, K_D0)));
 const V00: vec_t = @splat(@as(f32, 0.0));
 const V05: vec_t = @splat(@as(f32, 0.5));
 const V10: vec_t = @splat(@as(f32, 1.0));
-const V11_unused: vec_t = @splat(@as(f32, 1.1)); // kept for parity (unused below)
 
 const V001: vec_t = @splat(@as(f32, 0.01));
 const V055: vec_t = @splat(@as(f32, 0.55));
@@ -680,59 +640,4 @@ pub fn process(
     }
 
     return score(plane_avg_ssim, plane_avg_edge);
-}
-
-// -------------------- sRGB -> Linear helpers --------------------
-
-fn makeSRGBToLinearLUT() [256]f32 {
-    var lut: [256]f32 = undefined;
-    var i: usize = 0;
-    while (i < 256) : (i += 1) {
-        const c = @as(f32, @floatFromInt(i)) / 255.0;
-        lut[i] = if (c <= 0.04045) c / 12.92 else math.pow(f32, (c + 0.055) / 1.055, 2.4);
-    }
-    return lut;
-}
-
-const SRGB_LUT: [256]f32 = .{
-    0.0,          0.000303527,  0.000607054,  0.000910581,  0.0012141079, 0.0015176349, 0.0018211619, 0.0021246889, 0.0024282159, 0.0027317429, 0.0030352698, 0.0033465358, 0.0036765073, 0.004024717,  0.004391442,  0.0047769535,
-    0.0051815167, 0.0056053916, 0.006048833,  0.0065120908, 0.0069954102, 0.007499032,  0.008023193,  0.0085681256, 0.0091340587, 0.0097212173, 0.010329823,  0.010960094,  0.0116122452, 0.0122864884, 0.0129830323, 0.013702083,
-    0.0144438436, 0.0152085144, 0.0159962934, 0.0168073758, 0.0176419545, 0.0185002201, 0.019382361,  0.0202885631, 0.0212190104, 0.0221738848, 0.0231533662, 0.0241576324, 0.0251868596, 0.0262412219, 0.0273208916, 0.0284260395,
-    0.0295568344, 0.0307134437, 0.0318960331, 0.0331047666, 0.0343398068, 0.0356013149, 0.0368894504, 0.0382043716, 0.0395462353, 0.0409151969, 0.0423114106, 0.0437350293, 0.0451862044, 0.0466650863, 0.0481718242, 0.049706566,
-    0.0512694584, 0.052860647,  0.0544802764, 0.05612849,   0.0578054302, 0.0595112382, 0.0612460542, 0.0630100177, 0.0648032667, 0.0666259386, 0.0684781698, 0.0703600957, 0.0722718507, 0.0742135684, 0.0761853815, 0.0781874218,
-    0.0802198203, 0.0822827071, 0.0843762115, 0.086500462,  0.0886555863, 0.0908417112, 0.0930589628, 0.0953074666, 0.0975873471, 0.0998987282, 0.1022417331, 0.1046164841, 0.107023103,  0.1094617108, 0.1119324278, 0.1144353738,
-    0.1169706678, 0.119538428,  0.1221387722, 0.1247718176, 0.1274376804, 0.1301364767, 0.1328683216, 0.1356333297, 0.138431615,  0.1412632911, 0.1441284709, 0.1470272665, 0.1499597898, 0.152926152,  0.1559264637, 0.1589608351,
-    0.1620293756, 0.1651321945, 0.1682694002, 0.1714411007, 0.1746474037, 0.177888416,  0.1811642442, 0.1844749945, 0.1878207723, 0.1912016827, 0.1946178304, 0.1980693196, 0.2015562538, 0.2050787364, 0.2086368701, 0.2122307574,
-    0.2158605001, 0.2195261997, 0.2232279573, 0.2269658735, 0.2307400485, 0.2345505822, 0.2383975738, 0.2422811225, 0.2462013267, 0.2501582847, 0.2541520943, 0.2581828529, 0.2622506575, 0.2663556048, 0.270497791,  0.2746773121,
-    0.2788942635, 0.2831487404, 0.2874408377, 0.2917706498, 0.2961382708, 0.3005437944, 0.3049873141, 0.3094689228, 0.3139887134, 0.3185467781, 0.3231432091, 0.3277780981, 0.3324515363, 0.337163615,  0.3419144249, 0.3467040564,
-    0.3515325995, 0.3564001441, 0.3613067798, 0.3662525956, 0.3712376805, 0.376262123,  0.3813260114, 0.3864294338, 0.3915724777, 0.3967552307, 0.4019777798, 0.4072402119, 0.4125426135, 0.4178850708, 0.42326767,   0.4286904966,
-    0.4341536362, 0.4396571738, 0.4452011945, 0.4507857828, 0.4564110232, 0.4620769997, 0.4677837961, 0.4735314961, 0.4793201831, 0.4851499401, 0.4910208498, 0.4969329951, 0.502886458,  0.5088813209, 0.5149176654, 0.5209955732,
-    0.5271151257, 0.533276404,  0.539479489,  0.5457244614, 0.5520114015, 0.5583403896, 0.5647115057, 0.5711248295, 0.5775804404, 0.5840784179, 0.5906188409, 0.5972017884, 0.6038273389, 0.6104955708, 0.6172065624, 0.6239603917,
-    0.6307571363, 0.637596874,  0.644479682,  0.6514056374, 0.6583748173, 0.6653872983, 0.672443157,  0.6795424696, 0.6866853124, 0.6938717613, 0.7011018919, 0.7083757799, 0.7156935005, 0.7230551289, 0.7304607401, 0.7379104088,
-    0.7454042095, 0.7529422168, 0.7605245047, 0.7681511472, 0.7758222183, 0.7835377915, 0.7912979403, 0.799102738,  0.8069522577, 0.8148465722, 0.8227857544, 0.8307698768, 0.8387990117, 0.8468732315, 0.8549926081, 0.8631572135,
-    0.8713671192, 0.8796223969, 0.8879231179, 0.8962693534, 0.9046611744, 0.9130986518, 0.9215818563, 0.9301108584, 0.9386857285, 0.9473065367, 0.9559733532, 0.9646862479, 0.9734452904, 0.9822505503, 0.9911020971, 1.0,
-};
-
-fn sRGBInterleavedToPlanarLinear(
-    src: []const u8,
-    dst_planes: [3][]f32,
-    width: u32,
-    height: u32,
-    channels: u32,
-) void {
-    const w = @as(usize, width);
-    const h = @as(usize, height);
-    var y: usize = 0;
-    while (y < h) : (y += 1) {
-        var x: usize = 0;
-        while (x < w) : (x += 1) {
-            const idx = (y * w + x) * @as(usize, channels);
-            const r = SRGB_LUT[src[idx + 0]];
-            const g = SRGB_LUT[src[idx + 1]];
-            const b = SRGB_LUT[src[idx + 2]];
-            dst_planes[0][y * w + x] = r;
-            dst_planes[1][y * w + x] = g;
-            dst_planes[2][y * w + x] = b;
-        }
-    }
 }
