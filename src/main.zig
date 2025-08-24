@@ -71,9 +71,9 @@ pub fn main() !void {
     if (width % 16 != 0) {
         const padded_width = ((width + 15) / 16) * 16;
         padded_ref = try io.padWidth(allocator, ref_rgb, width, height, padded_width);
-        defer if (padded_ref.ptr != ref_rgb.ptr) allocator.free(padded_ref);
+        defer if (padded_ref.ptr != ref_rgb.ptr) allocator.free(ref_rgb);
         padded_dist = try io.padWidth(allocator, dist_rgb, width, height, padded_width);
-        defer if (padded_dist.ptr != dist_rgb.ptr) allocator.free(padded_dist);
+        defer if (padded_dist.ptr != dist_rgb.ptr) allocator.free(dist_rgb);
         width = padded_width;
     }
 
