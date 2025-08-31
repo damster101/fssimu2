@@ -219,29 +219,3 @@ pub fn toRGB8(allocator: std.mem.Allocator, img: Image) ![]u8 {
     }
     return rgb;
 }
-
-pub fn padWidth(
-    allocator: std.mem.Allocator,
-    original: []const u8,
-    width: usize,
-    height: usize,
-    new_width: usize,
-) ![]u8 {
-    if (new_width == width) return @constCast(original);
-    const channels: usize = 3;
-    const old_row_bytes = width * channels;
-    const new_row_bytes = new_width * channels;
-    var out = try allocator.alloc(u8, height * new_row_bytes);
-
-    for (0..height) |y| {
-        const src_row = original[y * old_row_bytes .. (y + 1) * old_row_bytes];
-        const dst_row = out[y * new_row_bytes .. (y + 1) * new_row_bytes];
-        @memcpy(dst_row[0..old_row_bytes], src_row);
-        const last_px_offset = old_row_bytes - channels;
-        var x_bytes: usize = old_row_bytes;
-        while (x_bytes < new_row_bytes) : (x_bytes += channels) {
-            @memcpy(dst_row[x_bytes .. x_bytes + channels], src_row[last_px_offset .. last_px_offset + channels]);
-        }
-    }
-    return out;
-}

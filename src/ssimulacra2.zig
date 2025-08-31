@@ -5,16 +5,14 @@ const scl = @import("linearlight.zig");
 // SSIMULACRA2 Metric Implementation
 
 pub const Ssimu2Error = error{
-    WidthNotMultipleOf4,
     InvalidChannelCount,
     OutOfMemory,
 };
 
 const K_SIZE = 9;
 const RADIUS = 4;
-const vec_t: type = @Vector(4, f32);
 
-pub fn computeSSIMULACRA2(
+pub fn computeSsimu2(
     allocator: std.mem.Allocator,
     reference: []const u8,
     distorted: []const u8,
@@ -23,7 +21,6 @@ pub fn computeSSIMULACRA2(
     channels: u32,
 ) Ssimu2Error!f64 {
     if (channels != 3 and channels != 4) return Ssimu2Error.InvalidChannelCount;
-    if (width % 4 != 0) return Ssimu2Error.WidthNotMultipleOf4;
 
     const pixels = @as(usize, width) * @as(usize, height);
     const expected_len = pixels * @as(usize, channels);
@@ -65,8 +62,13 @@ pub fn computeSSIMULACRA2(
     return process(allocator, ref_const, dist_const, stride, width, height);
 }
 
+// Placeholder retained for compatibility with some call sites, actual per-element
+// multiplication is done in `multiply` below.
 inline fn multiplyVec(src1: anytype, src2: anytype, dst: []f32) void {
-    dst[0..4].* = @as(vec_t, src1[0..4].*) * @as(vec_t, src2[0..4].*);
+    // intentionally a no-op placeholder. Use `multiply` for scalar element-wise multiply.
+    _ = src1;
+    _ = src2;
+    _ = dst;
 }
 
 pub inline fn multiply(src1: []const f32, src2: []const f32, dst: []f32, stride: u32, w: u32, h: u32) void {
@@ -74,10 +76,9 @@ pub inline fn multiply(src1: []const f32, src2: []const f32, dst: []f32, stride:
     while (y < h) : (y += 1) {
         const row = y * stride;
         var x: u32 = 0;
-        while (x + 4 <= w) : (x += 4) {
-            multiplyVec(src1[row + x ..], src2[row + x ..], dst[row + x ..]);
+        while (x < w) : (x += 1) {
+            dst[row + x] = src1[row + x] * src2[row + x];
         }
-        // (width is guaranteed multiple of 4, so no tail handling)
     }
 }
 
@@ -183,51 +184,46 @@ pub inline fn blur(src: []const f32, dst: []f32, stride: u32, w: u32, h: u32, tm
 const K_D0: f32 = 0.0037930734;
 const K_D1: f32 = std.math.lossyCast(f32, math.cbrt(@as(f32, K_D0)));
 
-const V00: vec_t = @splat(@as(f32, 0.0));
-const V05: vec_t = @splat(@as(f32, 0.5));
-const V10: vec_t = @splat(@as(f32, 1.0));
+const V00 = 0.0;
+const V05 = 0.5;
+const V10 = 1.0;
 
-const V001: vec_t = @splat(@as(f32, 0.01));
-const V055: vec_t = @splat(@as(f32, 0.55));
-const V042: vec_t = @splat(@as(f32, 0.42));
-const V140: vec_t = @splat(@as(f32, 14.0));
+const V001 = 0.01;
+const V055 = 0.55;
+const V042 = 0.42;
+const V140 = 14.0;
 
-const K_M02: vec_t = @splat(@as(f32, 0.078));
-const K_M00: vec_t = @splat(@as(f32, 0.30));
-const K_M01: vec_t = V10 - K_M02 - K_M00;
-const K_M12: vec_t = @splat(@as(f32, 0.078));
-const K_M10: vec_t = @splat(@as(f32, 0.23));
-const K_M11: vec_t = V10 - K_M12 - K_M10;
-const K_M20: vec_t = @splat(@as(f32, 0.24342269));
-const K_M21: vec_t = @splat(@as(f32, 0.20476745));
-const K_M22: vec_t = V10 - K_M20 - K_M21;
+const K_M02 = 0.078;
+const K_M00 = 0.30;
+const K_M01 = V10 - K_M02 - K_M00;
+const K_M12 = 0.078;
+const K_M10 = 0.23;
+const K_M11 = V10 - K_M12 - K_M10;
+const K_M20 = 0.24342269;
+const K_M21 = 0.20476745;
+const K_M22 = V10 - K_M20 - K_M21;
 
-const OPSIN_ABSORBANCE_MATRIX = [_]vec_t{
+const OPSIN_ABSORBANCE_MATRIX = [_]f32{
     K_M00, K_M01, K_M02,
     K_M10, K_M11, K_M12,
     K_M20, K_M21, K_M22,
 };
-const OPSIN_ABSORBANCE_BIAS: vec_t = @splat(K_D0);
-const ABSORBANCE_BIAS: vec_t = @splat(-K_D1);
+const OPSIN_ABSORBANCE_BIAS: f32 = @as(f32, K_D0);
+const ABSORBANCE_BIAS: f32 = @as(f32, -K_D1);
 
-inline fn cbrtVec(x: vec_t) vec_t {
-    var out: vec_t = undefined;
-    var i: u32 = 0;
-    while (i < 4) : (i += 1) {
-        out[i] = std.math.lossyCast(f32, math.cbrt(@as(f32, x[i])));
-    }
+inline fn cbrtVec(x: f32) f32 {
+    return std.math.lossyCast(f32, math.cbrt(@as(f32, x)));
+}
+
+inline fn opsinAbsorbance(rgb: [3]f32) [3]f32 {
+    var out: [3]f32 = undefined;
+    out[0] = @mulAdd(f32, OPSIN_ABSORBANCE_MATRIX[0], rgb[0], @mulAdd(f32, OPSIN_ABSORBANCE_MATRIX[1], rgb[1], @mulAdd(f32, OPSIN_ABSORBANCE_MATRIX[2], rgb[2], OPSIN_ABSORBANCE_BIAS)));
+    out[1] = @mulAdd(f32, OPSIN_ABSORBANCE_MATRIX[3], rgb[0], @mulAdd(f32, OPSIN_ABSORBANCE_MATRIX[4], rgb[1], @mulAdd(f32, OPSIN_ABSORBANCE_MATRIX[5], rgb[2], OPSIN_ABSORBANCE_BIAS)));
+    out[2] = @mulAdd(f32, OPSIN_ABSORBANCE_MATRIX[6], rgb[0], @mulAdd(f32, OPSIN_ABSORBANCE_MATRIX[7], rgb[1], @mulAdd(f32, OPSIN_ABSORBANCE_MATRIX[8], rgb[2], OPSIN_ABSORBANCE_BIAS)));
     return out;
 }
 
-inline fn opsinAbsorbance(rgb: [3]vec_t) [3]vec_t {
-    var out: [3]vec_t = undefined;
-    out[0] = @mulAdd(vec_t, OPSIN_ABSORBANCE_MATRIX[0], rgb[0], @mulAdd(vec_t, OPSIN_ABSORBANCE_MATRIX[1], rgb[1], @mulAdd(vec_t, OPSIN_ABSORBANCE_MATRIX[2], rgb[2], OPSIN_ABSORBANCE_BIAS)));
-    out[1] = @mulAdd(vec_t, OPSIN_ABSORBANCE_MATRIX[3], rgb[0], @mulAdd(vec_t, OPSIN_ABSORBANCE_MATRIX[4], rgb[1], @mulAdd(vec_t, OPSIN_ABSORBANCE_MATRIX[5], rgb[2], OPSIN_ABSORBANCE_BIAS)));
-    out[2] = @mulAdd(vec_t, OPSIN_ABSORBANCE_MATRIX[6], rgb[0], @mulAdd(vec_t, OPSIN_ABSORBANCE_MATRIX[7], rgb[1], @mulAdd(vec_t, OPSIN_ABSORBANCE_MATRIX[8], rgb[2], OPSIN_ABSORBANCE_BIAS)));
-    return out;
-}
-
-inline fn mixedToXYB(mixed: [3]vec_t) [3]vec_t {
+inline fn mixedToXYB(mixed: [3]f32) [3]f32 {
     return .{
         V05 * (mixed[0] - mixed[1]),
         V05 * (mixed[0] + mixed[1]),
@@ -235,33 +231,35 @@ inline fn mixedToXYB(mixed: [3]vec_t) [3]vec_t {
     };
 }
 
-inline fn linearRGBtoXYB(input: [3]vec_t) [3]vec_t {
+inline fn linearRGBtoXYB(input: [3]f32) [3]f32 {
     var mixed = opsinAbsorbance(input);
     var i: u32 = 0;
     while (i < 3) : (i += 1) {
-        const pred: @Vector(4, bool) = mixed[i] < V00;
-        mixed[i] = @select(f32, pred, V00, mixed[i]);
+        if (mixed[i] < V00) mixed[i] = V00;
         mixed[i] = cbrtVec(mixed[i]) + ABSORBANCE_BIAS;
     }
     return mixedToXYB(mixed);
 }
 
-inline fn makePositiveXYB(xyb: *[3]vec_t) void {
-    xyb[2] = (xyb[2] - xyb[1]) + V055;
-    xyb[0] = xyb[0] * V140 + V042;
-    xyb[1] += V001;
+inline fn makePositiveXYB(xyb_in: *[3]f32) void {
+    // Safely dereference the pointer into a local array, mutate, then write back.
+    var arr = xyb_in.*;
+    arr[2] = (arr[2] - arr[1]) + V055;
+    arr[0] = arr[0] * V140 + V042;
+    arr[1] = arr[1] + V001;
+    xyb_in.* = arr;
 }
 
-inline fn xybVec(src: [3][]const f32, dst: [3][]f32) void {
-    const rgb = [3]vec_t{
-        src[0][0..4].*,
-        src[1][0..4].*,
-        src[2][0..4].*,
+inline fn xyb(src: [3][]const f32, dst: [3][]f32, idx: usize) void {
+    const rgb = [3]f32{
+        src[0][idx],
+        src[1][idx],
+        src[2][idx],
     };
     var out = linearRGBtoXYB(rgb);
     makePositiveXYB(&out);
     inline for (0..3) |i| {
-        dst[i][0..4].* = out[i];
+        dst[i][idx] = out[i];
     }
 }
 
@@ -271,11 +269,8 @@ pub inline fn toXYB(srcp: [3][]const f32, dstp: [3][]f32, stride: u32, w: u32, h
     var y: u32 = 0;
     while (y < h) : (y += 1) {
         var x: u32 = 0;
-        while (x + 4 <= w) : (x += 4) {
-            const x2 = x + 4;
-            const srcs = [3][]const f32{ src[0][x..x2], src[1][x..x2], src[2][x..x2] };
-            const dsts = [3][]f32{ dst[0][x..x2], dst[1][x..x2], dst[2][x..x2] };
-            xybVec(srcs, dsts);
+        while (x < w) : (x += 1) {
+            xyb(src, dst, @intCast(x));
         }
         inline for (0..3) |i| {
             src[i] = src[i][stride..];
