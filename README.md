@@ -25,28 +25,28 @@ $ ./ssimu2 ref.png dst.png
 
 ## Performance
 
-Performance tested on the Intel Core i7 13700k using a 3840x2160 test image. The numbers indicate that this implementation is up to 14% faster and uses ~50% less memory.
+Performance tested on the Intel Core i7 13700k using a 3840x2160 test image. The numbers indicate that this implementation is up to 12% faster and uses ~40% less memory compared to the [reference implementation](https://github.com/cloudinary/ssimulacra2).
 
 ```
-poop "./ssimu2 medium.png dst.png" "ssimulacra2 medium.png dst.png"
-Benchmark 1 (8 runs): ./ssimu2 medium.png dst.png
+poop "ssimulacra2 medium.png dst.png" "./ssimu2 medium.png dst.png"
+Benchmark 1 (7 runs): ssimulacra2 medium.png dst.png
   measurement          mean ± σ            min … max           outliers         delta
-  wall_time           701ms ± 3.67ms     699ms …  710ms          1 (13%)        0%
-  peak_rss            889MB ±  148KB     889MB …  890MB          1 (13%)        0%
-  cpu_cycles         3.49G  ± 5.07M     3.49G  … 3.50G           0 ( 0%)        0%
-  instructions       8.21G  ± 78.9K     8.21G  … 8.21G           0 ( 0%)        0%
-  cache_references   76.2M  ± 6.30K     76.1M  … 76.2M           0 ( 0%)        0%
-  cache_misses       37.0M  ±  204K     36.6M  … 37.3M           0 ( 0%)        0%
-  branch_misses      11.8M  ±  235K     11.7M  … 12.4M           1 (13%)        0%
-Benchmark 2 (7 runs): ssimulacra2 medium.png dst.png
+  wall_time           801ms ± 41.2ms     759ms …  854ms          0 ( 0%)        0%
+  peak_rss           1.34GB ± 1.26MB    1.34GB … 1.34GB          0 ( 0%)        0%
+  cpu_cycles         3.86G  ±  213M     3.65G  … 4.14G           0 ( 0%)        0%
+  instructions       9.33G  ± 3.65M     9.32G  … 9.33G           0 ( 0%)        0%
+  cache_references    117M  ± 1.49M      116M  …  119M           0 ( 0%)        0%
+  cache_misses       60.6M  ± 2.81M     57.0M  … 63.1M           0 ( 0%)        0%
+  branch_misses      16.5M  ± 62.7K     16.4M  … 16.5M           0 ( 0%)        0%
+Benchmark 2 (8 runs): ./ssimu2 medium.png dst.png
   measurement          mean ± σ            min … max           outliers         delta
-  wall_time           801ms ± 39.7ms     759ms …  854ms          0 ( 0%)        💩+ 14.3% ±  4.3%
-  peak_rss           1.34GB ± 1.75MB    1.34GB … 1.34GB          0 ( 0%)        💩+ 50.6% ±  0.2%
-  cpu_cycles         3.86G  ±  209M     3.65G  … 4.14G           0 ( 0%)        💩+ 10.4% ±  4.5%
-  instructions       9.33G  ± 4.24M     9.32G  … 9.33G           0 ( 0%)        💩+ 13.7% ±  0.0%
-  cache_references    118M  ± 1.14M      116M  …  119M           0 ( 0%)        💩+ 54.5% ±  1.1%
-  cache_misses       60.6M  ± 2.59M     57.2M  … 63.1M           0 ( 0%)        💩+ 63.9% ±  5.3%
-  branch_misses      16.5M  ± 52.0K     16.4M  … 16.6M           0 ( 0%)        💩+ 39.7% ±  1.7%
+  wall_time           708ms ± 8.95ms     703ms …  730ms          1 (13%)        ⚡- 11.6% ±  4.0%
+  peak_rss            817MB ±  127KB     816MB …  817MB          0 ( 0%)        ⚡- 39.0% ±  0.1%
+  cpu_cycles         3.55G  ± 25.4M     3.53G  … 3.61G           1 (13%)        ⚡-  8.0% ±  4.2%
+  instructions       8.03G  ± 69.7K     8.03G  … 8.03G           1 (13%)        ⚡- 13.9% ±  0.0%
+  cache_references   74.7M  ± 8.72K     74.7M  … 74.7M           1 (13%)        ⚡- 36.4% ±  1.0%
+  cache_misses       35.9M  ±  103K     35.8M  … 36.1M           0 ( 0%)        ⚡- 40.7% ±  3.5%
+  branch_misses      11.5M  ± 16.6K     11.4M  … 11.5M           1 (13%)        ⚡- 30.5% ±  0.3%
 ```
 
 Conformance to the reference SSIMULACRA2 implementation can be tested with `validate.py` by supplying the `ssimu2` binary.
@@ -80,7 +80,7 @@ LEVELS: 1.0 2.0 4.0
 
 ## Compilation
 
-Compilation requires Zig version 0.14.1
+Compilation requires Zig version 0.15.1
 
 Run `zig build --release=fast`, and the binary will emit to `zig-out/bin/ssimu2`
 
