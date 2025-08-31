@@ -5,14 +5,14 @@ const scl = @import("linearlight.zig");
 // SSIMULACRA2 Metric Implementation
 
 pub const Ssimu2Error = error{
-    WidthNotMultipleOf16,
+    WidthNotMultipleOf4,
     InvalidChannelCount,
     OutOfMemory,
 };
 
 const K_SIZE = 9;
 const RADIUS = 4;
-const vec_t: type = @Vector(16, f32);
+const vec_t: type = @Vector(4, f32);
 
 pub fn computeSSIMULACRA2(
     allocator: std.mem.Allocator,
@@ -23,7 +23,7 @@ pub fn computeSSIMULACRA2(
     channels: u32,
 ) Ssimu2Error!f64 {
     if (channels != 3 and channels != 4) return Ssimu2Error.InvalidChannelCount;
-    if (width % 16 != 0) return Ssimu2Error.WidthNotMultipleOf16;
+    if (width % 4 != 0) return Ssimu2Error.WidthNotMultipleOf4;
 
     const pixels = @as(usize, width) * @as(usize, height);
     const expected_len = pixels * @as(usize, channels);
@@ -66,7 +66,7 @@ pub fn computeSSIMULACRA2(
 }
 
 inline fn multiplyVec(src1: anytype, src2: anytype, dst: []f32) void {
-    dst[0..16].* = @as(vec_t, src1[0..16].*) * @as(vec_t, src2[0..16].*);
+    dst[0..4].* = @as(vec_t, src1[0..4].*) * @as(vec_t, src2[0..4].*);
 }
 
 pub inline fn multiply(src1: []const f32, src2: []const f32, dst: []f32, stride: u32, w: u32, h: u32) void {
@@ -74,10 +74,10 @@ pub inline fn multiply(src1: []const f32, src2: []const f32, dst: []f32, stride:
     while (y < h) : (y += 1) {
         const row = y * stride;
         var x: u32 = 0;
-        while (x + 16 <= w) : (x += 16) {
+        while (x + 4 <= w) : (x += 4) {
             multiplyVec(src1[row + x ..], src2[row + x ..], dst[row + x ..]);
         }
-        // (width is guaranteed multiple of 16, so no tail handling)
+        // (width is guaranteed multiple of 4, so no tail handling)
     }
 }
 
@@ -213,7 +213,7 @@ const ABSORBANCE_BIAS: vec_t = @splat(-K_D1);
 inline fn cbrtVec(x: vec_t) vec_t {
     var out: vec_t = undefined;
     var i: u32 = 0;
-    while (i < 16) : (i += 1) {
+    while (i < 4) : (i += 1) {
         out[i] = std.math.lossyCast(f32, math.cbrt(@as(f32, x[i])));
     }
     return out;
@@ -239,7 +239,7 @@ inline fn linearRGBtoXYB(input: [3]vec_t) [3]vec_t {
     var mixed = opsinAbsorbance(input);
     var i: u32 = 0;
     while (i < 3) : (i += 1) {
-        const pred: @Vector(16, bool) = mixed[i] < V00;
+        const pred: @Vector(4, bool) = mixed[i] < V00;
         mixed[i] = @select(f32, pred, V00, mixed[i]);
         mixed[i] = cbrtVec(mixed[i]) + ABSORBANCE_BIAS;
     }
@@ -254,14 +254,14 @@ inline fn makePositiveXYB(xyb: *[3]vec_t) void {
 
 inline fn xybVec(src: [3][]const f32, dst: [3][]f32) void {
     const rgb = [3]vec_t{
-        src[0][0..16].*,
-        src[1][0..16].*,
-        src[2][0..16].*,
+        src[0][0..4].*,
+        src[1][0..4].*,
+        src[2][0..4].*,
     };
     var out = linearRGBtoXYB(rgb);
     makePositiveXYB(&out);
     inline for (0..3) |i| {
-        dst[i][0..16].* = out[i];
+        dst[i][0..4].* = out[i];
     }
 }
 
@@ -271,8 +271,8 @@ pub inline fn toXYB(srcp: [3][]const f32, dstp: [3][]f32, stride: u32, w: u32, h
     var y: u32 = 0;
     while (y < h) : (y += 1) {
         var x: u32 = 0;
-        while (x + 16 <= w) : (x += 16) {
-            const x2 = x + 16;
+        while (x + 4 <= w) : (x += 4) {
+            const x2 = x + 4;
             const srcs = [3][]const f32{ src[0][x..x2], src[1][x..x2], src[2][x..x2] };
             const dsts = [3][]f32{ dst[0][x..x2], dst[1][x..x2], dst[2][x..x2] };
             xybVec(srcs, dsts);

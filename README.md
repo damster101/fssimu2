@@ -65,17 +65,17 @@ LEVELS: 1.0 2.0 4.0
 == custom vs ref ==
  pairs: 75
  ref mean: 77.5116  std: 10.6899
- custom mean: 76.4332  std: 11.0777
- mean diff (other - ref): -1.07841
- diff stddev: 0.889939
- diff stderr: 0.102761
- percentage error (mean diff / ref mean): 1.391%
- max absolute error: 3.47013
+ custom mean: 76.9932  std: 11.1606
+ mean diff (other - ref): -0.518408
+ diff stddev: 0.541577
+ diff stderr: 0.0625359
+ percentage error (mean diff / ref mean): 0.669%
+ max absolute error: 1.9165
 
 == correlation ==
- PCC (Pearson): 0.997291
- SRCC (Spearman): 0.995220
- KRCC (Kendall): 0.948829
+ PCC (Pearson): 0.999700
+ SRCC (Spearman): 0.999403
+ KRCC (Kendall): 0.987748
 ```
 
 ## Compilation
