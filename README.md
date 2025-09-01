@@ -25,28 +25,28 @@ $ ./ssimu2 ref.png dst.png
 
 ## Performance
 
-Performance tested on the Intel Core i7 13700k using a 3840x2160 test image. The numbers indicate that this implementation is up to 12% faster and uses ~40% less memory compared to the [reference implementation](https://github.com/cloudinary/ssimulacra2).
+Performance tested on the Intel Core i7 13700k using a 3840x2160 test image. The numbers indicate that this implementation is up to 23% faster and uses ~40% less memory compared to the [reference implementation](https://github.com/cloudinary/ssimulacra2).
 
 ```
 poop "ssimulacra2 medium.png dst.png" "./ssimu2 medium.png dst.png"
 Benchmark 1 (7 runs): ssimulacra2 medium.png dst.png
   measurement          mean ± σ            min … max           outliers         delta
-  wall_time           801ms ± 41.2ms     759ms …  854ms          0 ( 0%)        0%
-  peak_rss           1.34GB ± 1.26MB    1.34GB … 1.34GB          0 ( 0%)        0%
-  cpu_cycles         3.86G  ±  213M     3.65G  … 4.14G           0 ( 0%)        0%
-  instructions       9.33G  ± 3.65M     9.32G  … 9.33G           0 ( 0%)        0%
-  cache_references    117M  ± 1.49M      116M  …  119M           0 ( 0%)        0%
-  cache_misses       60.6M  ± 2.81M     57.0M  … 63.1M           0 ( 0%)        0%
-  branch_misses      16.5M  ± 62.7K     16.4M  … 16.5M           0 ( 0%)        0%
-Benchmark 2 (8 runs): ./ssimu2 medium.png dst.png
+  wall_time           809ms ± 46.8ms     760ms …  857ms          0 ( 0%)        0%
+  peak_rss           1.34GB ± 1.51MB    1.34GB … 1.34GB          0 ( 0%)        0%
+  cpu_cycles         3.90G  ±  243M     3.65G  … 4.15G           0 ( 0%)        0%
+  instructions       9.33G  ± 3.00M     9.32G  … 9.33G           1 (14%)        0%
+  cache_references    118M  ± 1.33M      116M  …  119M           0 ( 0%)        0%
+  cache_misses       60.0M  ± 3.00M     57.0M  … 63.4M           0 ( 0%)        0%
+  branch_misses      16.6M  ±  101K     16.5M  … 16.8M           0 ( 0%)        0%
+Benchmark 2 (9 runs): ./ssimu2 medium.png dst.png
   measurement          mean ± σ            min … max           outliers         delta
-  wall_time           708ms ± 8.95ms     703ms …  730ms          1 (13%)        ⚡- 11.6% ±  4.0%
-  peak_rss            817MB ±  127KB     816MB …  817MB          0 ( 0%)        ⚡- 39.0% ±  0.1%
-  cpu_cycles         3.55G  ± 25.4M     3.53G  … 3.61G           1 (13%)        ⚡-  8.0% ±  4.2%
-  instructions       8.03G  ± 69.7K     8.03G  … 8.03G           1 (13%)        ⚡- 13.9% ±  0.0%
-  cache_references   74.7M  ± 8.72K     74.7M  … 74.7M           1 (13%)        ⚡- 36.4% ±  1.0%
-  cache_misses       35.9M  ±  103K     35.8M  … 36.1M           0 ( 0%)        ⚡- 40.7% ±  3.5%
-  branch_misses      11.5M  ± 16.6K     11.4M  … 11.5M           1 (13%)        ⚡- 30.5% ±  0.3%
+  wall_time           618ms ± 10.4ms     603ms …  631ms          0 ( 0%)        ⚡- 23.6% ±  4.2%
+  peak_rss            817MB ±  118KB     816MB …  817MB          0 ( 0%)        ⚡- 39.1% ±  0.1%
+  cpu_cycles         3.05G  ± 45.1M     2.99G  … 3.10G           0 ( 0%)        ⚡- 21.7% ±  4.5%
+  instructions       6.17G  ± 24.8M     6.11G  … 6.18G           3 (33%)        ⚡- 33.8% ±  0.2%
+  cache_references   74.7M  ± 13.7K     74.7M  … 74.7M           1 (11%)        ⚡- 36.6% ±  0.8%
+  cache_misses       34.9M  ±  686K     34.1M  … 35.8M           0 ( 0%)        ⚡- 41.9% ±  3.7%
+  branch_misses      11.4M  ±  138K     11.0M  … 11.5M           1 (11%)        ⚡- 31.2% ±  0.8%
 ```
 
 Conformance to the reference SSIMULACRA2 implementation can be tested with `validate.py` by supplying the `ssimu2` binary.
@@ -66,8 +66,8 @@ LEVELS: 1.0 2.0 4.0
  pairs: 75
  ref mean: 77.5116  std: 10.6899
  custom mean: 76.9932  std: 11.1606
- mean diff (other - ref): -0.518408
- diff stddev: 0.541577
+ mean diff (other - ref): -0.518406
+ diff stddev: 0.541576
  diff stderr: 0.0625359
  percentage error (mean diff / ref mean): 0.669%
  max absolute error: 1.9165

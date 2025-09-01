@@ -54,41 +54,23 @@ pub fn main() !void {
         return fail("Input images must have identical dimensions (got {d}x{d} vs {d}x{d})", .{ ref_image.width, ref_image.height, dist_image.width, dist_image.height }, 2);
 
     // Convert both to 3-channel RGB ignoring alpha (if present)
-    const ref_rgb_allocated: bool = ref_image.channels != 3;
-    const ref_rgb = if (ref_rgb_allocated) try io.toRGB8(allocator, ref_image) else ref_image.data;
-    defer if (ref_rgb_allocated) allocator.free(ref_rgb);
+    const ref_has_alpha: bool = ref_image.channels != 3;
+    const ref_rgb: []u8 = if (ref_has_alpha) try io.toRGB8(allocator, ref_image) else ref_image.data;
+    defer if (ref_has_alpha) allocator.free(ref_rgb);
 
-    const dist_rgb_allocated: bool = dist_image.channels != 3;
-    const dist_rgb = if (dist_rgb_allocated) try io.toRGB8(allocator, dist_image) else dist_image.data;
-    defer if (dist_rgb_allocated) allocator.free(dist_rgb);
+    const dst_has_alpha: bool = dist_image.channels != 3;
+    const dist_rgb: []u8 = if (dst_has_alpha) try io.toRGB8(allocator, dist_image) else dist_image.data;
+    defer if (dst_has_alpha) allocator.free(dist_rgb);
 
-    var width = ref_image.width;
-    const height = ref_image.height;
-
-    // If width not multiple of 4, pad both horizontally (replicate last pixel)
-    var padded_ref = ref_rgb;
-    var padded_dist = dist_rgb;
-    if (width % 4 != 0) {
-        const padded_width = ((width + 3) / 4) * 4;
-        padded_ref = try io.padWidth(allocator, ref_rgb, width, height, padded_width);
-        defer if (padded_ref.ptr != ref_rgb.ptr) allocator.free(ref_rgb);
-        padded_dist = try io.padWidth(allocator, dist_rgb, width, height, padded_width);
-        defer if (padded_dist.ptr != dist_rgb.ptr) allocator.free(dist_rgb);
-        width = padded_width;
-    }
-
-    const score = ssim.computeSSIMULACRA2(
+    const score = ssim.computeSsimu2(
         allocator,
-        padded_ref,
-        padded_dist,
-        @intCast(width),
-        @intCast(height),
+        ref_rgb,
+        dist_rgb,
+        @intCast(ref_image.width),
+        @intCast(ref_image.height),
         3,
     ) catch |e| {
         switch (e) {
-            ssim.Ssimu2Error.WidthNotMultipleOf4 => {
-                return fail("Width not multiple of 4 even after padding attempt.", .{}, 3);
-            },
             ssim.Ssimu2Error.InvalidChannelCount => {
                 return fail("Invalid channel count encountered.", .{}, 3);
             },
