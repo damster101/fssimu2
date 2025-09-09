@@ -1,9 +1,12 @@
 const std = @import("std");
 const c = @cImport({
     @cInclude("third-party/libspng/spng.h");
+    @cInclude("jpeglib.h");
+    @cInclude("webp/decode.h");
+    @cInclude("avif/avif.h");
 });
+const print = std.debug.print;
 
-// Generic in-memory image representation used by the metric pipeline.
 pub const Image = struct {
     width: usize,
     height: usize,
@@ -15,6 +18,66 @@ pub const Image = struct {
         self.* = undefined;
     }
 };
+
+pub fn loadJPEG(allocator: std.mem.Allocator, path: []const u8) !Image {
+    const file = try std.fs.cwd().openFile(path, .{});
+
+    const file_ptr = c.fdopen(file.handle, "rb");
+    if (file_ptr == null) {
+        file.close();
+        return error.FailedToOpenFile;
+    }
+    defer _ = c.fclose(file_ptr);
+
+    var cinfo: c.jpeg_decompress_struct = undefined;
+    var jerr: c.jpeg_error_mgr = undefined;
+
+    cinfo.err = c.jpeg_std_error(&jerr);
+    c.jpeg_create_decompress(&cinfo);
+    defer c.jpeg_destroy_decompress(&cinfo);
+
+    c.jpeg_stdio_src(&cinfo, file_ptr);
+
+    if (c.jpeg_read_header(&cinfo, c.TRUE) != c.JPEG_HEADER_OK)
+        return error.InvalidJPEGHeader;
+
+    if (cinfo.num_components == 1)
+        cinfo.out_color_space = c.JCS_GRAYSCALE
+    else
+        cinfo.out_color_space = c.JCS_RGB;
+
+    if (c.jpeg_start_decompress(&cinfo) != c.TRUE) {
+        return error.JPEGDecompressFailed;
+    }
+
+    const width: usize = @intCast(cinfo.output_width);
+    const height: usize = @intCast(cinfo.output_height);
+    const channels: usize = @intCast(cinfo.output_components);
+
+    const row_stride: usize = width * channels;
+    const out_buf: []u8 = try allocator.alloc(u8, height * row_stride);
+    errdefer allocator.free(out_buf);
+
+    const row_buf = try allocator.alloc(u8, row_stride);
+    defer allocator.free(row_buf);
+
+    for (0..height) |y| {
+        var row_pointers: [1][*c]u8 = .{row_buf.ptr};
+        if (c.jpeg_read_scanlines(&cinfo, &row_pointers, 1) != 1)
+            return error.JPEGReadScanlinesFailed;
+        @memcpy(out_buf[y * row_stride .. (y + 1) * row_stride], row_buf);
+    }
+
+    if (c.jpeg_finish_decompress(&cinfo) != c.TRUE)
+        return error.JPEGFinishDecompressFailed;
+
+    return .{
+        .width = @intCast(width),
+        .height = @intCast(height),
+        .channels = @intCast(channels),
+        .data = out_buf,
+    };
+}
 
 pub fn loadPNG(allocator: std.mem.Allocator, path: []const u8) !Image {
     const file = try std.fs.cwd().openFile(path, .{});
@@ -28,10 +91,12 @@ pub fn loadPNG(allocator: std.mem.Allocator, path: []const u8) !Image {
     if (ctx == null) return error.FailedCreateContext;
     defer c.spng_ctx_free(ctx);
 
-    if (c.spng_set_png_buffer(ctx, buf.ptr, buf.len) != 0) return error.SetBufferFailed;
+    if (c.spng_set_png_buffer(ctx, buf.ptr, buf.len) != 0)
+        return error.SetBufferFailed;
 
     var ihdr: c.struct_spng_ihdr = undefined;
-    if (c.spng_get_ihdr(ctx, &ihdr) != 0) return error.GetHeaderFailed;
+    if (c.spng_get_ihdr(ctx, &ihdr) != 0)
+        return error.GetHeaderFailed;
 
     // prefer RGB8 (ignore alpha), but if alpha, decode RGBA8 & strip later.
     const fmt: c_int = switch (ihdr.color_type) {
@@ -56,7 +121,7 @@ pub fn loadPNG(allocator: std.mem.Allocator, path: []const u8) !Image {
         else => 4,
     };
 
-    return Image{
+    return .{
         .width = ihdr.width,
         .height = ihdr.height,
         .channels = channels,
@@ -153,7 +218,7 @@ pub fn loadPAM(allocator: std.mem.Allocator, path: []const u8) !Image {
     errdefer allocator.free(out);
     @memcpy(out, buf[header_end .. header_end + data_size]);
 
-    return Image{
+    return .{
         .width = width,
         .height = height,
         .channels = channels,
@@ -161,11 +226,107 @@ pub fn loadPAM(allocator: std.mem.Allocator, path: []const u8) !Image {
     };
 }
 
-pub fn loadImage(allocator: std.mem.Allocator, path: []const u8) !Image {
-    if (hasExtension(path, ".png")) return loadPNG(allocator, path);
-    if (hasExtension(path, ".pam")) return loadPAM(allocator, path);
+pub fn loadWebP(allocator: std.mem.Allocator, path: []const u8) !Image {
+    const file = try std.fs.cwd().openFile(path, .{});
+    defer file.close();
+    const size = try file.getEndPos();
+    const buf = try allocator.alloc(u8, size);
+    defer allocator.free(buf);
+    _ = try file.readAll(buf);
 
-    return loadPNG(allocator, path) catch loadPAM(allocator, path);
+    var width: c_int = 0;
+    var height: c_int = 0;
+    const data = c.WebPDecodeRGBA(buf.ptr, buf.len, &width, &height);
+    if (data == null) return error.WebPDecodeFailed;
+    defer c.WebPFree(data);
+
+    const out_size = @as(usize, @intCast(width)) * @as(usize, @intCast(height)) * 4;
+    const out_buf = try allocator.alloc(u8, out_size);
+    errdefer allocator.free(out_buf);
+    @memcpy(out_buf, @as([*]const u8, @ptrCast(data))[0..out_size]);
+
+    return .{
+        .width = @intCast(width),
+        .height = @intCast(height),
+        .channels = 4,
+        .data = out_buf,
+    };
+}
+
+pub fn loadAVIF(allocator: std.mem.Allocator, path: []const u8) !Image {
+    const file = try std.fs.cwd().openFile(path, .{});
+    defer file.close();
+    const size = try file.getEndPos();
+    const buf = try allocator.alloc(u8, size);
+    defer allocator.free(buf);
+    _ = try file.readAll(buf);
+
+    const decoder = c.avifDecoderCreate();
+    if (decoder == null) return error.AvifCreateDecoderFailed;
+    defer c.avifDecoderDestroy(decoder);
+
+    // decode the first frame
+    var r = c.avifDecoderSetIOMemory(decoder, buf.ptr, buf.len);
+    if (r != c.AVIF_RESULT_OK) return error.AvifSetIOMemoryFailed;
+    r = c.avifDecoderParse(decoder);
+    if (r != c.AVIF_RESULT_OK) return error.AvifParseFailed;
+    r = c.avifDecoderNextImage(decoder);
+    if (r != c.AVIF_RESULT_OK) return error.AvifNoImageDecoded;
+
+    // request 8-bit RGB out
+    var rgb = c.avifRGBImage{};
+    c.avifRGBImageSetDefaults(&rgb, decoder[0].image);
+    rgb.format = c.AVIF_RGB_FORMAT_RGB;
+    rgb.depth = 8;
+
+    r = c.avifRGBImageAllocatePixels(&rgb);
+    if (r != c.AVIF_RESULT_OK) return error.AvifAllocatePixelsFailed;
+    defer c.avifRGBImageFreePixels(&rgb);
+
+    r = c.avifImageYUVToRGB(decoder[0].image, &rgb);
+    if (r != c.AVIF_RESULT_OK) return error.AvifYUVToRGBFailed;
+
+    const img_ptr = decoder[0].image;
+    const width: usize = @intCast(img_ptr.*.width);
+    const height: usize = @intCast(img_ptr.*.height);
+    const rowBytes: usize = @intCast(rgb.rowBytes);
+    const channels: usize = 3;
+
+    const out_size = width * height * channels;
+    const out_buf = try allocator.alloc(u8, out_size);
+    errdefer allocator.free(out_buf);
+
+    const src_pixels: [*]const u8 = @ptrCast(rgb.pixels);
+    const src_all: []const u8 = src_pixels[0..(rowBytes * height)];
+    for (0..height) |y| {
+        const src_off = y * rowBytes;
+        const dst_off = y * width * channels;
+        @memcpy(out_buf[dst_off .. dst_off + width * channels], src_all[src_off .. src_off + width * channels]);
+    }
+
+    return .{
+        .width = width,
+        .height = height,
+        .channels = @intCast(channels),
+        .data = out_buf,
+    };
+}
+
+pub fn loadImage(allocator: std.mem.Allocator, path: []const u8) !Image {
+    if (hasExtension(path, ".png"))
+        return loadPNG(allocator, path)
+    else if (hasExtension(path, ".pam"))
+        return loadPAM(allocator, path)
+    else if (hasExtension(path, ".jpg") or hasExtension(path, ".jpeg"))
+        return loadJPEG(allocator, path)
+    else if (hasExtension(path, ".webp"))
+        return loadWebP(allocator, path)
+    else if (hasExtension(path, ".avif"))
+        return loadAVIF(allocator, path)
+    else {
+        print("Error: Unrecognized image format; fssimu2 supports PNG, PAM, JPG, WEBP, or AVIF\n", .{});
+        return error.UnrecognizedImageFormat;
+    }
 }
 
 fn hasExtension(path: []const u8, ext: []const u8) bool {
@@ -180,16 +341,14 @@ pub fn toRGB8(allocator: std.mem.Allocator, img: Image) ![]u8 {
     switch (img.channels) {
         3 => {
             // direct copy
-            var i: usize = 0;
-            while (i < pixels) : (i += 1) {
+            for (0..pixels) |i| {
                 rgb[i * 3 + 0] = img.data[i * 3 + 0];
                 rgb[i * 3 + 1] = img.data[i * 3 + 1];
                 rgb[i * 3 + 2] = img.data[i * 3 + 2];
             }
         },
         4 => {
-            var i: usize = 0;
-            while (i < pixels) : (i += 1) {
+            for (0..pixels) |i| {
                 rgb[i * 3 + 0] = img.data[i * 4 + 0];
                 rgb[i * 3 + 1] = img.data[i * 4 + 1];
                 rgb[i * 3 + 2] = img.data[i * 4 + 2];
@@ -197,8 +356,7 @@ pub fn toRGB8(allocator: std.mem.Allocator, img: Image) ![]u8 {
         },
         1 => {
             // replicate grayscale channel
-            var i: usize = 0;
-            while (i < pixels) : (i += 1) {
+            for (0..pixels) |i| {
                 const g = img.data[i];
                 rgb[i * 3 + 0] = g;
                 rgb[i * 3 + 1] = g;
@@ -207,8 +365,7 @@ pub fn toRGB8(allocator: std.mem.Allocator, img: Image) ![]u8 {
         },
         2 => {
             // grayscale + alpha -> ignore alpha
-            var i: usize = 0;
-            while (i < pixels) : (i += 1) {
+            for (0..pixels) |i| {
                 const g = img.data[i * 2 + 0];
                 rgb[i * 3 + 0] = g;
                 rgb[i * 3 + 1] = g;
