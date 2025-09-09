@@ -62,16 +62,7 @@ pub fn computeSsimu2(
     return process(allocator, ref_const, dist_const, stride, width, height);
 }
 
-// Placeholder retained for compatibility with some call sites, actual per-element
-// multiplication is done in `multiply` below.
-inline fn multiplyVec(src1: anytype, src2: anytype, dst: []f32) void {
-    // intentionally a no-op placeholder. Use `multiply` for scalar element-wise multiply.
-    _ = src1;
-    _ = src2;
-    _ = dst;
-}
-
-pub inline fn multiply(src1: []const f32, src2: []const f32, dst: []f32, stride: u32, w: u32, h: u32) void {
+inline fn multiply(src1: []const f32, src2: []const f32, dst: []f32, stride: u32, w: u32, h: u32) void {
     var y: u32 = 0;
     while (y < h) : (y += 1) {
         const row = y * stride;
@@ -140,7 +131,7 @@ inline fn blurV(src: anytype, dstp: []f32, kernel: [K_SIZE]f32, w: u32) void {
     }
 }
 
-pub inline fn blur(src: []const f32, dst: []f32, stride: u32, w: u32, h: u32, tmp_row: []f32) void {
+inline fn blur(src: []const f32, dst: []f32, stride: u32, w: u32, h: u32, tmp_row: []f32) void {
     const kernel = [K_SIZE]f32{
         0.0076144188642501831054687500,
         0.0360749699175357818603515625,
@@ -263,7 +254,7 @@ inline fn xyb(src: [3][]const f32, dst: [3][]f32, idx: usize) void {
     }
 }
 
-pub inline fn toXYB(srcp: [3][]const f32, dstp: [3][]f32, stride: u32, w: u32, h: u32) void {
+inline fn toXYB(srcp: [3][]const f32, dstp: [3][]f32, stride: u32, w: u32, h: u32) void {
     var src = srcp;
     var dst = dstp;
     var y: u32 = 0;
@@ -529,7 +520,7 @@ inline fn downscale(src: [3][]f32, dst: [3][]f32, src_stride: u32, in_w: u32, in
     }
 }
 
-pub fn process(
+fn process(
     allocator: std.mem.Allocator,
     srcp1: [3][]const f32,
     srcp2: [3][]const f32,
