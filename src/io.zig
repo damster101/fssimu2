@@ -3,7 +3,9 @@ const c = @cImport({
     @cInclude("third-party/libspng/spng.h");
     @cInclude("jpeglib.h");
     @cInclude("webp/decode.h");
+    @cInclude("avif/avif.h");
 });
+const print = std.debug.print;
 
 // Generic in-memory image representation used by the metric pipeline.
 pub const Image = struct {
@@ -252,17 +254,80 @@ pub fn loadWebP(allocator: std.mem.Allocator, path: []const u8) !Image {
     };
 }
 
+pub fn loadAVIF(allocator: std.mem.Allocator, path: []const u8) !Image {
+    const file = try std.fs.cwd().openFile(path, .{});
+    defer file.close();
+    const size = try file.getEndPos();
+    const buf = try allocator.alloc(u8, size);
+    defer allocator.free(buf);
+    _ = try file.readAll(buf);
+
+    const decoder = c.avifDecoderCreate();
+    if (decoder == null) return error.AvifCreateDecoderFailed;
+    defer c.avifDecoderDestroy(decoder);
+
+    // decode the first frame
+    var r = c.avifDecoderSetIOMemory(decoder, buf.ptr, buf.len);
+    if (r != c.AVIF_RESULT_OK) return error.AvifSetIOMemoryFailed;
+    r = c.avifDecoderParse(decoder);
+    if (r != c.AVIF_RESULT_OK) return error.AvifParseFailed;
+    r = c.avifDecoderNextImage(decoder);
+    if (r != c.AVIF_RESULT_OK) return error.AvifNoImageDecoded;
+
+    // request 8-bit RGB out
+    var rgb: c.avifRGBImage = c.avifRGBImage{};
+    c.avifRGBImageSetDefaults(&rgb, decoder[0].image);
+    rgb.format = c.AVIF_RGB_FORMAT_RGB;
+    rgb.depth = 8;
+
+    r = c.avifRGBImageAllocatePixels(&rgb);
+    if (r != c.AVIF_RESULT_OK) return error.AvifAllocatePixelsFailed;
+    defer c.avifRGBImageFreePixels(&rgb);
+
+    r = c.avifImageYUVToRGB(decoder[0].image, &rgb);
+    if (r != c.AVIF_RESULT_OK) return error.AvifYUVToRGBFailed;
+
+    const img_ptr = decoder[0].image;
+    const width: usize = @intCast(img_ptr.*.width);
+    const height: usize = @intCast(img_ptr.*.height);
+    const rowBytes: usize = @intCast(rgb.rowBytes);
+    const channels: usize = 3;
+
+    const out_size = width * height * channels;
+    const out_buf = try allocator.alloc(u8, out_size);
+    errdefer allocator.free(out_buf);
+
+    const src_pixels: [*]const u8 = @ptrCast(rgb.pixels);
+    const src_all: []const u8 = src_pixels[0..(rowBytes * height)];
+    for (0..height) |y| {
+        const src_off = y * rowBytes;
+        const dst_off = y * width * channels;
+        @memcpy(out_buf[dst_off .. dst_off + width * channels], src_all[src_off .. src_off + width * channels]);
+    }
+
+    return .{
+        .width = width,
+        .height = height,
+        .channels = @intCast(channels),
+        .data = out_buf,
+    };
+}
+
 pub fn loadImage(allocator: std.mem.Allocator, path: []const u8) !Image {
     if (hasExtension(path, ".png"))
-        return loadPNG(allocator, path);
-    if (hasExtension(path, ".pam"))
-        return loadPAM(allocator, path);
-    if (hasExtension(path, ".jpg") or hasExtension(path, ".jpeg"))
-        return loadJPEG(allocator, path);
-    if (hasExtension(path, ".webp"))
-        return loadWebP(allocator, path);
-
-    return loadPNG(allocator, path) catch loadPAM(allocator, path) catch loadJPEG(allocator, path) catch loadWebP(allocator, path);
+        return loadPNG(allocator, path)
+    else if (hasExtension(path, ".pam"))
+        return loadPAM(allocator, path)
+    else if (hasExtension(path, ".jpg") or hasExtension(path, ".jpeg"))
+        return loadJPEG(allocator, path)
+    else if (hasExtension(path, ".webp"))
+        return loadWebP(allocator, path)
+    else if (hasExtension(path, ".avif"))
+        return loadAVIF(allocator, path)
+    else {
+        print("Error: Unrecognized image format; fssimu2 supports PNG, PAM, JPG, WEBP, or AVIF\n", .{});
+        return error.UnrecognizedImageFormat;
+    }
 }
 
 fn hasExtension(path: []const u8, ext: []const u8) bool {

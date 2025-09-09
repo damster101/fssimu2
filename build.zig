@@ -58,6 +58,7 @@ pub fn build(b: *std.Build) void {
     bin.linkLibrary(spng);
     bin.linkSystemLibrary("jpeg");
     bin.linkSystemLibrary("webp");
+    bin.linkSystemLibrary("avif");
 
     // Install step
     b.installArtifact(bin);

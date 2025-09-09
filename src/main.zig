@@ -6,6 +6,7 @@ const c = @cImport({
     @cInclude("stdio.h");
     @cInclude("jpeglib.h");
     @cInclude("webp/decode.h");
+    @cInclude("avif/avif.h");
 });
 
 const VERSION = @import("build_opts").version;
@@ -119,13 +120,20 @@ fn printVersion() void {
     const jpeg_minor: comptime_int = (jpeg_version / 1_000) % 1_000;
     const jpeg_patch: comptime_int = jpeg_version % 1_000;
     const jpeg_simd: bool = c.WITH_SIMD != 0;
+
     const webp_version = c.WebPGetDecoderVersion();
     const webp_major = webp_version >> 16;
     const webp_minor = (webp_version >> 8) & 0xFF;
     const webp_patch = webp_version & 0xFF;
+
+    const avif_major: comptime_int = c.AVIF_VERSION_MAJOR;
+    const avif_minor: comptime_int = c.AVIF_VERSION_MINOR;
+    const avif_patch: comptime_int = c.AVIF_VERSION_PATCH;
     print("fssimu2 {s}\n", .{VERSION});
-    print("libjpeg-turbo {d}.{d}.{d} [simd: {}]\n", .{ jpeg_major, jpeg_minor, jpeg_patch, jpeg_simd });
+    print("libjpeg-turbo {d}.{d}.{d} ", .{ jpeg_major, jpeg_minor, jpeg_patch });
+    print("[simd: {}]\n", .{jpeg_simd});
     print("libwebp {d}.{d}.{d}\n", .{ webp_major, webp_minor, webp_patch });
+    print("libavif {d}.{d}.{d}\n", .{ avif_major, avif_minor, avif_patch });
 }
 
 fn usageExtra(msg: []const u8) void {
