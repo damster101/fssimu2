@@ -111,7 +111,7 @@ fn usage() void {
         \\  -h, --help      show this help
         \\  -v, --version   show version information
     , .{});
-    print("\n\n\x1b[37m8-bit sRGB PNG, PAM, JPEG, or WebP expected (RGB[A] or GRAYSCALE[+ALPHA])\x1b[0m\n", .{});
+    print("\n\n\x1b[37m8-bit sRGB PNG, PAM, JPEG, WebP, or AVIF expected\x1b[0m\n", .{});
 }
 
 fn printVersion() void {
