@@ -22,6 +22,7 @@ pub fn build(b: *std.Build) void {
     const options = b.addOptions();
     const version = getVersionString(b) catch "unknown";
     options.addOption([]const u8, "version", version);
+    const strip: bool = if (optimize == std.builtin.OptimizeMode.ReleaseFast) true else false;
 
     // libspng
     const spng = b.addLibrary(.{
@@ -29,6 +30,7 @@ pub fn build(b: *std.Build) void {
         .root_module = b.createModule(.{
             .target = target,
             .optimize = optimize,
+            .strip = strip,
         }),
     });
     const spng_sources = [_][]const u8{
@@ -47,6 +49,7 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("src/main.zig"),
             .target = target,
             .optimize = optimize,
+            .strip = strip,
         }),
     });
     bin.root_module.addOptions("build_opts", options);
@@ -54,6 +57,7 @@ pub fn build(b: *std.Build) void {
     bin.linkLibC();
     bin.linkLibrary(spng);
     bin.linkSystemLibrary("jpeg");
+    bin.linkSystemLibrary("webp");
 
     // Install step
     b.installArtifact(bin);
