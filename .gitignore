@@ -2,3 +2,7 @@
 zig-out/
 *.o
 .ruff_cache/
+*.pam
+*.png
+*.webp
+*.avif
