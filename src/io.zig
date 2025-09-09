@@ -7,7 +7,6 @@ const c = @cImport({
 });
 const print = std.debug.print;
 
-// Generic in-memory image representation used by the metric pipeline.
 pub const Image = struct {
     width: usize,
     height: usize,
@@ -342,16 +341,14 @@ pub fn toRGB8(allocator: std.mem.Allocator, img: Image) ![]u8 {
     switch (img.channels) {
         3 => {
             // direct copy
-            var i: usize = 0;
-            while (i < pixels) : (i += 1) {
+            for (0..pixels) |i| {
                 rgb[i * 3 + 0] = img.data[i * 3 + 0];
                 rgb[i * 3 + 1] = img.data[i * 3 + 1];
                 rgb[i * 3 + 2] = img.data[i * 3 + 2];
             }
         },
         4 => {
-            var i: usize = 0;
-            while (i < pixels) : (i += 1) {
+            for (0..pixels) |i| {
                 rgb[i * 3 + 0] = img.data[i * 4 + 0];
                 rgb[i * 3 + 1] = img.data[i * 4 + 1];
                 rgb[i * 3 + 2] = img.data[i * 4 + 2];
@@ -359,8 +356,7 @@ pub fn toRGB8(allocator: std.mem.Allocator, img: Image) ![]u8 {
         },
         1 => {
             // replicate grayscale channel
-            var i: usize = 0;
-            while (i < pixels) : (i += 1) {
+            for (0..pixels) |i| {
                 const g = img.data[i];
                 rgb[i * 3 + 0] = g;
                 rgb[i * 3 + 1] = g;
@@ -369,8 +365,7 @@ pub fn toRGB8(allocator: std.mem.Allocator, img: Image) ![]u8 {
         },
         2 => {
             // grayscale + alpha -> ignore alpha
-            var i: usize = 0;
-            while (i < pixels) : (i += 1) {
+            for (0..pixels) |i| {
                 const g = img.data[i * 2 + 0];
                 rgb[i * 3 + 0] = g;
                 rgb[i * 3 + 1] = g;

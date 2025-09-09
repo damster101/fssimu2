@@ -56,6 +56,8 @@ pub fn build(b: *std.Build) void {
     bin.addIncludePath(b.path("."));
     bin.linkLibC();
     bin.linkLibrary(spng);
+
+    // system decoder libs
     bin.linkSystemLibrary("jpeg");
     bin.linkSystemLibrary("webp");
     bin.linkSystemLibrary("avif");
