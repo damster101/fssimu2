@@ -1,6 +1,7 @@
 const std = @import("std");
 const c = @cImport({
     @cInclude("third-party/libspng/spng.h");
+    @cInclude("jpeglib.h");
 });
 
 // Generic in-memory image representation used by the metric pipeline.
@@ -16,6 +17,66 @@ pub const Image = struct {
     }
 };
 
+pub fn loadJPEG(allocator: std.mem.Allocator, path: []const u8) !Image {
+    const file = try std.fs.cwd().openFile(path, .{});
+
+    const file_ptr = c.fdopen(file.handle, "rb");
+    if (file_ptr == null) {
+        file.close();
+        return error.FailedToOpenFile;
+    }
+    defer _ = c.fclose(file_ptr);
+
+    var cinfo: c.jpeg_decompress_struct = undefined;
+    var jerr: c.jpeg_error_mgr = undefined;
+
+    cinfo.err = c.jpeg_std_error(&jerr);
+    c.jpeg_create_decompress(&cinfo);
+    defer c.jpeg_destroy_decompress(&cinfo);
+
+    c.jpeg_stdio_src(&cinfo, file_ptr);
+
+    if (c.jpeg_read_header(&cinfo, c.TRUE) != c.JPEG_HEADER_OK)
+        return error.InvalidJPEGHeader;
+
+    if (cinfo.num_components == 1)
+        cinfo.out_color_space = c.JCS_GRAYSCALE
+    else
+        cinfo.out_color_space = c.JCS_RGB;
+
+    if (c.jpeg_start_decompress(&cinfo) != c.TRUE) {
+        return error.JPEGDecompressFailed;
+    }
+
+    const width: usize = @intCast(cinfo.output_width);
+    const height: usize = @intCast(cinfo.output_height);
+    const channels: usize = @intCast(cinfo.output_components);
+
+    const row_stride: usize = width * channels;
+    const out_buf: []u8 = try allocator.alloc(u8, height * row_stride);
+    errdefer allocator.free(out_buf);
+
+    const row_buf = try allocator.alloc(u8, row_stride);
+    defer allocator.free(row_buf);
+
+    for (0..height) |y| {
+        var row_pointers: [1][*c]u8 = .{row_buf.ptr};
+        if (c.jpeg_read_scanlines(&cinfo, &row_pointers, 1) != 1)
+            return error.JPEGReadScanlinesFailed;
+        @memcpy(out_buf[y * row_stride .. (y + 1) * row_stride], row_buf);
+    }
+
+    if (c.jpeg_finish_decompress(&cinfo) != c.TRUE)
+        return error.JPEGFinishDecompressFailed;
+
+    return .{
+        .width = @intCast(width),
+        .height = @intCast(height),
+        .channels = @intCast(channels),
+        .data = out_buf,
+    };
+}
+
 pub fn loadPNG(allocator: std.mem.Allocator, path: []const u8) !Image {
     const file = try std.fs.cwd().openFile(path, .{});
     defer file.close();
@@ -28,10 +89,12 @@ pub fn loadPNG(allocator: std.mem.Allocator, path: []const u8) !Image {
     if (ctx == null) return error.FailedCreateContext;
     defer c.spng_ctx_free(ctx);
 
-    if (c.spng_set_png_buffer(ctx, buf.ptr, buf.len) != 0) return error.SetBufferFailed;
+    if (c.spng_set_png_buffer(ctx, buf.ptr, buf.len) != 0)
+        return error.SetBufferFailed;
 
     var ihdr: c.struct_spng_ihdr = undefined;
-    if (c.spng_get_ihdr(ctx, &ihdr) != 0) return error.GetHeaderFailed;
+    if (c.spng_get_ihdr(ctx, &ihdr) != 0)
+        return error.GetHeaderFailed;
 
     // prefer RGB8 (ignore alpha), but if alpha, decode RGBA8 & strip later.
     const fmt: c_int = switch (ihdr.color_type) {
@@ -56,7 +119,7 @@ pub fn loadPNG(allocator: std.mem.Allocator, path: []const u8) !Image {
         else => 4,
     };
 
-    return Image{
+    return .{
         .width = ihdr.width,
         .height = ihdr.height,
         .channels = channels,
@@ -153,7 +216,7 @@ pub fn loadPAM(allocator: std.mem.Allocator, path: []const u8) !Image {
     errdefer allocator.free(out);
     @memcpy(out, buf[header_end .. header_end + data_size]);
 
-    return Image{
+    return .{
         .width = width,
         .height = height,
         .channels = channels,
@@ -162,10 +225,14 @@ pub fn loadPAM(allocator: std.mem.Allocator, path: []const u8) !Image {
 }
 
 pub fn loadImage(allocator: std.mem.Allocator, path: []const u8) !Image {
-    if (hasExtension(path, ".png")) return loadPNG(allocator, path);
-    if (hasExtension(path, ".pam")) return loadPAM(allocator, path);
+    if (hasExtension(path, ".png"))
+        return loadPNG(allocator, path);
+    if (hasExtension(path, ".pam"))
+        return loadPAM(allocator, path);
+    if (hasExtension(path, ".jpg") or hasExtension(path, ".jpeg"))
+        return loadJPEG(allocator, path);
 
-    return loadPNG(allocator, path) catch loadPAM(allocator, path);
+    return loadPNG(allocator, path) catch loadPAM(allocator, path) catch loadJPEG(allocator, path);
 }
 
 fn hasExtension(path: []const u8, ext: []const u8) bool {

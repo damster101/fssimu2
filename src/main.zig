@@ -2,6 +2,10 @@ const std = @import("std");
 const ssim = @import("ssimulacra2.zig");
 const io = @import("io.zig");
 const print = std.debug.print;
+const c = @cImport({
+    @cInclude("stdio.h");
+    @cInclude("jpeglib.h");
+});
 
 const VERSION = @import("build_opts").version;
 
@@ -17,16 +21,18 @@ pub fn main() !void {
     defer args.deinit(allocator);
     while (args_iter.next()) |a| try args.append(allocator, a);
 
-    if (args.items.len < 3)
-        return usage();
-
     var json_output = false;
     var positional: [2]?[]const u8 = .{ null, null };
     var pos_index: usize = 0;
 
+    var show_help = false;
+    var show_version = false;
+
     for (args.items[1..]) |arg| {
         if (std.mem.eql(u8, arg, "--help") or std.mem.eql(u8, arg, "-h")) {
-            return usage();
+            show_help = true;
+        } else if (std.mem.eql(u8, arg, "--version") or std.mem.eql(u8, arg, "-v")) {
+            show_version = true;
         } else if (std.mem.eql(u8, arg, "--json")) {
             json_output = true;
         } else {
@@ -36,6 +42,9 @@ pub fn main() !void {
             pos_index += 1;
         }
     }
+
+    if (show_help) return usage();
+    if (show_version) return printVersion();
 
     if (pos_index != 2)
         return usageExtra("Two image paths required: reference distorted");
@@ -93,13 +102,24 @@ fn usage() void {
     print("\x1b[34mfssimu2\x1b[0m | {s}\n\n", .{VERSION});
     print(
         \\usage:
-        \\  fssimu2 [--json] reference.(png|pam) distorted.(png|pam)
+        \\  fssimu2 [--json] reference.(png|pam|jpg|jpeg) distorted.(png|pam|jpg|jpeg)
         \\
         \\options:
         \\  --json          output result as json
         \\  -h, --help      show this help
+        \\  -v, --version   show version information
     , .{});
-    print("\n\n\x1b[37m8-bit sRGB PNG or PAM expected (RGB[A] or GRAYSCALE[+ALPHA])\x1b[0m\n", .{});
+    print("\n\n\x1b[37m8-bit sRGB PNG, PAM, or JPEG expected (RGB[A] or GRAYSCALE[+ALPHA])\x1b[0m\n", .{});
+}
+
+fn printVersion() void {
+    const jpeg_version = c.LIBJPEG_TURBO_VERSION_NUMBER;
+    const major = jpeg_version / 1_000_000;
+    const minor = (jpeg_version / 1_000) % 1_000;
+    const patch = jpeg_version % 1_000;
+    const jpeg_simd: bool = c.WITH_SIMD != 0;
+    print("fssimu2 {s}\n", .{VERSION});
+    print("libjpeg-turbo {d}.{d}.{d} [simd: {}]\n", .{ major, minor, patch, jpeg_simd });
 }
 
 fn usageExtra(msg: []const u8) void {

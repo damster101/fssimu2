@@ -53,6 +53,7 @@ pub fn build(b: *std.Build) void {
     bin.addIncludePath(b.path("."));
     bin.linkLibC();
     bin.linkLibrary(spng);
+    bin.linkSystemLibrary("jpeg");
 
     // Install step
     b.installArtifact(bin);
