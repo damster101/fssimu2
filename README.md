@@ -8,13 +8,14 @@ Fast [SSIMULACRA2](https://github.com/cloudinary/ssimulacra2/tree/main) derivati
 fssimu2 | [version]
 
 usage:
-  fssimu2 [--json] reference.png distorted.png
+  fssimu2 [--json] reference distorted
 
 options:
   --json          output result as json
   -h, --help      show this help
+  -v, --version   show version information
 
-8-bit RGB[A] sRGB PNG expected
+sRGB PNG, PAM, JPEG, WebP, or AVIF expected
 ```
 
 Example output:
@@ -80,9 +81,51 @@ LEVELS: 1.0 2.0 4.0
 
 ## Compilation
 
-Compilation requires Zig version 0.15.1
+Compilation requires:
+- Zig (version [0.15.1](https://ziglang.org/download/0.15.1/release-notes.html))
+- [libjpeg-turbo](https://libjpeg-turbo.org)
+- [libwebp](https://chromium.googlesource.com/webm/libwebp)
+- [libavif](https://github.com/AOMediaCodec/libavif)
 
-Run `zig build --release=fast`, and the binary will emit to `zig-out/bin/ssimu2`
+Run `zig build --release=fast`, and the binary will emit to `zig-out/bin/ssimu2`. The library will emit to `zig-out/lib/libssimu2.so` (or .dylib on macOS, .dll on Windows) and the include will be moved to `zig-out/include/ssimu2.h`.
+
+## C ABI
+
+`fssimu2` provides a C-compatible ABI with the `ssimu2.h` include file.
+
+### Header
+
+The exposed functionality is as follows:
+
+```c
+// Compute a SSIMULACRA2 score
+// The caller must ensure that the reference and distorted buffers
+// are at least (width * height * channels) bytes long. If not,
+// could lead to UB in ReleaseFast
+int ssimulacra2_score(
+    const uint8_t *reference,
+    const uint8_t *distorted,
+    const unsigned width,
+    const unsigned height,
+    const unsigned channels,
+    const double *out_score
+);
+```
+
+### Example Usage
+
+An example C program is provided in the `c_abi_example/` directory, featuring a simple PAM decoder and SSIMULACRA2 computation. See the `test.c` file for usage.
+
+In order to build the test example, enter the `c_abi_example/` dir and run:
+```sh
+cc test.c pam_dec.c -I../zig-out/include -L../zig-out/lib -lssimu2 -o test
+# Set library path for Linux
+LD_LIBRARY_PATH=../zig-out/lib ./test ref.pam dst.pam
+# Set library path for macOS
+DYLD_LIBRARY_PATH=../zig-out/lib ./test ref.pam dst.pam
+```
+
+When fssimu2 is properly installed system-wide, the library path specifier isn't needed.
 
 ## License
 

@@ -104,14 +104,14 @@ fn usage() void {
     print("\x1b[34mfssimu2\x1b[0m | {s}\n\n", .{VERSION});
     print(
         \\usage:
-        \\  fssimu2 [--json] reference.(png|pam|jpg|jpeg|webp) distorted.(png|pam|jpg|jpeg|webp)
+        \\  fssimu2 [--json] reference distorted
         \\
         \\options:
         \\  --json          output result as json
         \\  -h, --help      show this help
         \\  -v, --version   show version information
     , .{});
-    print("\n\n\x1b[37m8-bit sRGB PNG, PAM, JPEG, WebP, or AVIF expected\x1b[0m\n", .{});
+    print("\n\n\x1b[37msRGB PNG, PAM, JPEG, WebP, or AVIF input expected\x1b[0m\n", .{});
 }
 
 fn printVersion() void {

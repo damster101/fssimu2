@@ -62,6 +62,21 @@ pub fn build(b: *std.Build) void {
     bin.linkSystemLibrary("webp");
     bin.linkSystemLibrary("avif");
 
-    // Install step
     b.installArtifact(bin);
+
+    // c lib
+    const lib = b.addLibrary(.{
+        .name = "ssimu2",
+        .linkage = .dynamic,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/c_abi.zig"),
+            .target = target,
+            .optimize = optimize,
+            .strip = strip,
+        }),
+    });
+    lib.linkLibC();
+    b.installArtifact(lib);
+
+    b.installFile("src/include/ssimu2.h", "include/ssimu2.h");
 }
