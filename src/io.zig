@@ -2,6 +2,7 @@ const std = @import("std");
 const c = @cImport({
     @cInclude("third-party/libspng/spng.h");
     @cInclude("jpeglib.h");
+    @cInclude("webp/decode.h");
 });
 
 // Generic in-memory image representation used by the metric pipeline.
@@ -224,6 +225,33 @@ pub fn loadPAM(allocator: std.mem.Allocator, path: []const u8) !Image {
     };
 }
 
+pub fn loadWebP(allocator: std.mem.Allocator, path: []const u8) !Image {
+    const file = try std.fs.cwd().openFile(path, .{});
+    defer file.close();
+    const size = try file.getEndPos();
+    const buf = try allocator.alloc(u8, size);
+    defer allocator.free(buf);
+    _ = try file.readAll(buf);
+
+    var width: c_int = 0;
+    var height: c_int = 0;
+    const data = c.WebPDecodeRGBA(buf.ptr, buf.len, &width, &height);
+    if (data == null) return error.WebPDecodeFailed;
+    defer c.WebPFree(data);
+
+    const out_size = @as(usize, @intCast(width)) * @as(usize, @intCast(height)) * 4;
+    const out_buf = try allocator.alloc(u8, out_size);
+    errdefer allocator.free(out_buf);
+    @memcpy(out_buf, @as([*]const u8, @ptrCast(data))[0..out_size]);
+
+    return .{
+        .width = @intCast(width),
+        .height = @intCast(height),
+        .channels = 4,
+        .data = out_buf,
+    };
+}
+
 pub fn loadImage(allocator: std.mem.Allocator, path: []const u8) !Image {
     if (hasExtension(path, ".png"))
         return loadPNG(allocator, path);
@@ -231,8 +259,10 @@ pub fn loadImage(allocator: std.mem.Allocator, path: []const u8) !Image {
         return loadPAM(allocator, path);
     if (hasExtension(path, ".jpg") or hasExtension(path, ".jpeg"))
         return loadJPEG(allocator, path);
+    if (hasExtension(path, ".webp"))
+        return loadWebP(allocator, path);
 
-    return loadPNG(allocator, path) catch loadPAM(allocator, path) catch loadJPEG(allocator, path);
+    return loadPNG(allocator, path) catch loadPAM(allocator, path) catch loadJPEG(allocator, path) catch loadWebP(allocator, path);
 }
 
 fn hasExtension(path: []const u8, ext: []const u8) bool {

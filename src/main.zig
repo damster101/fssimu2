@@ -5,6 +5,7 @@ const print = std.debug.print;
 const c = @cImport({
     @cInclude("stdio.h");
     @cInclude("jpeglib.h");
+    @cInclude("webp/decode.h");
 });
 
 const VERSION = @import("build_opts").version;
@@ -102,24 +103,29 @@ fn usage() void {
     print("\x1b[34mfssimu2\x1b[0m | {s}\n\n", .{VERSION});
     print(
         \\usage:
-        \\  fssimu2 [--json] reference.(png|pam|jpg|jpeg) distorted.(png|pam|jpg|jpeg)
+        \\  fssimu2 [--json] reference.(png|pam|jpg|jpeg|webp) distorted.(png|pam|jpg|jpeg|webp)
         \\
         \\options:
         \\  --json          output result as json
         \\  -h, --help      show this help
         \\  -v, --version   show version information
     , .{});
-    print("\n\n\x1b[37m8-bit sRGB PNG, PAM, or JPEG expected (RGB[A] or GRAYSCALE[+ALPHA])\x1b[0m\n", .{});
+    print("\n\n\x1b[37m8-bit sRGB PNG, PAM, JPEG, or WebP expected (RGB[A] or GRAYSCALE[+ALPHA])\x1b[0m\n", .{});
 }
 
 fn printVersion() void {
     const jpeg_version = c.LIBJPEG_TURBO_VERSION_NUMBER;
-    const major = jpeg_version / 1_000_000;
-    const minor = (jpeg_version / 1_000) % 1_000;
-    const patch = jpeg_version % 1_000;
+    const jpeg_major: comptime_int = jpeg_version / 1_000_000;
+    const jpeg_minor: comptime_int = (jpeg_version / 1_000) % 1_000;
+    const jpeg_patch: comptime_int = jpeg_version % 1_000;
     const jpeg_simd: bool = c.WITH_SIMD != 0;
+    const webp_version = c.WebPGetDecoderVersion();
+    const webp_major = webp_version >> 16;
+    const webp_minor = (webp_version >> 8) & 0xFF;
+    const webp_patch = webp_version & 0xFF;
     print("fssimu2 {s}\n", .{VERSION});
-    print("libjpeg-turbo {d}.{d}.{d} [simd: {}]\n", .{ major, minor, patch, jpeg_simd });
+    print("libjpeg-turbo {d}.{d}.{d} [simd: {}]\n", .{ jpeg_major, jpeg_minor, jpeg_patch, jpeg_simd });
+    print("libwebp {d}.{d}.{d}\n", .{ webp_major, webp_minor, webp_patch });
 }
 
 fn usageExtra(msg: []const u8) void {
