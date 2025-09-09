@@ -274,7 +274,7 @@ pub fn loadAVIF(allocator: std.mem.Allocator, path: []const u8) !Image {
     if (r != c.AVIF_RESULT_OK) return error.AvifNoImageDecoded;
 
     // request 8-bit RGB out
-    var rgb: c.avifRGBImage = c.avifRGBImage{};
+    var rgb = c.avifRGBImage{};
     c.avifRGBImageSetDefaults(&rgb, decoder[0].image);
     rgb.format = c.AVIF_RGB_FORMAT_RGB;
     rgb.depth = 8;
