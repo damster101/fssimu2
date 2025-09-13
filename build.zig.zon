@@ -1,0 +1,13 @@
+.{
+    .name = .fssimu2,
+    .version = "0.0.1",
+    .fingerprint = 0xda707f180d3775f3,
+    .minimum_zig_version = "0.15.1",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "LICENSE",
+        "README.md",
+    },
+}
